@@ -35,11 +35,11 @@ android {
 }
 
 // The bundled resolver is the repo-root resolver.js (single source of truth), copied into assets at build time.
-val copyResolver by tasks.registering(Copy::class) {
+val copyResolver = tasks.register<Copy>("copyResolver") {
     from(rootProject.file("resolver.js"))
     into(layout.buildDirectory.dir("generated/resolverAssets"))
 }
-android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/resolverAssets"))
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/resolverAssets").get().asFile)
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(copyResolver) }
 
 dependencies {

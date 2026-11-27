@@ -2,8 +2,8 @@ package app.ani.data
 
 import android.content.Context
 import app.ani.BuildConfig
-import io.github.dokar3.quickjs.QuickJs
-import io.github.dokar3.quickjs.binding.asyncFunction
+import com.dokar.quickjs.QuickJs
+import com.dokar.quickjs.binding.asyncFunction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -1,28 +1,21 @@
 package app.ani
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.sp
+import androidx.activity.enableEdgeToEdge
+import app.ani.ui.AniApp
+import app.ani.ui.AniTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
-        setContent {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xFF151413)),
-                contentAlignment = Alignment.Center,
-            ) {
-                BasicText("ani", style = TextStyle(color = Color(0xFFE6E1DA), fontSize = 28.sp))
-            }
-        }
+        setContent { AniTheme { AniApp() } }
     }
 }

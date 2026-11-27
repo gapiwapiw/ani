@@ -45,14 +45,14 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 - [x] Player: Media3 ExoPlayer HLS, Referer/UA headers, resume from history, auto-next, quality (max height), speed, own subtitle renderer (`data/Subs.kt`, VTT/SRT), extra subtitles via resolver findSubs. Compiles in CI. NOT run on a device.
 - [x] Downloads: Media3 DownloadManager + foreground service (`AniDownloadService`, max 2 parallel), subtitle files saved next to the episode, offline playback through the shared cache (`Downloads.localLoaded`). Compiles in CI. NOT run on a device.
 - [x] History, list, watch later, settings (subtitle language/size, speed, download quality, resolver status + refresh).
-- [ ] README (build, push, update resolver)
+- [x] README (build, push, update resolver)
+- [x] Notification permission prompt (asked when a download starts), Cinemeta episode thumbnails on the show page.
 - [ ] On-device verification of everything above (nothing has been run on a phone)
 
 ## Next steps
 1. Install the CI APK on a phone and test in this order: search -> show page -> play -> download -> airplane-mode playback. Fix resolver.js first if search/sources fail (all site logic is there).
-2. Known gaps: no notification-permission prompt (Android 13+: downloads run but the notification may be hidden), downloaded episodes are not marked in the episode list beyond the ring, no storage-location setting, no Cinemeta episode thumbnails yet (resolver returns them in `info().eps[s][e].th`).
-3. Write README.md (build, push, how to change resolver.js and set RESOLVER_URL).
-4. Optional: make the repo public or add a read-only token, then set RESOLVER_URL so resolver fixes ship without a new APK.
+2. Known gaps: downloaded episodes are not marked in the episode list beyond the ring, no storage-location setting.
+3. Optional: make the repo public or add a read-only token, then set RESOLVER_URL so resolver fixes ship without a new APK.
 
 ## UI map (app/src/main/java/app/ani/ui)
 Theme.kt (colors C, shapes Shp, Motion, reduced-motion), Icons.kt (ImageVectors + AniLogo), Components.kt (AText, tap, Poster, ShowCard, Seg, Btn, IconBtn, Ring, AniSlider...), AniApp.kt (tabs, nav, back order sheet then player then show), Home/Search/Downloads/Settings/Show/Sheets/Player.kt.
@@ -68,3 +68,4 @@ Not Material: only foundation/ui/animation. Edge-to-edge is on (targetSdk 37), s
 - 2026-11-27 (session 3): resolver.js + Resolver.kt + build wiring, CI green (fixes: assets srcDir must be a File on AGP 9, quickjs package name).
 - 2026-11-27 (later): theme, icons, components, all static screens, launcher icon; CI green on second try (two import fixes). Not run on a device. Logo uses the prototype's calm colors, not logo.svg's old red.
 - 2026-11-27 (session 3, cont.): repo/store, real screens, Media3 player, download manager and service, settings. CI green after fixes (Store.setPrefs JVM clash, DownloadHelper.Callback.onPrepared(helper, Boolean) in the Media3 version pinned here).
+- 2026-11-27 (session 3, end): notification prompt, episode thumbnails, README. CI green. Only on-device testing remains.

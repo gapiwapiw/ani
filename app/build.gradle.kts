@@ -17,6 +17,11 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "2.0"
+        // Optional remote resolver URL. Empty means: cached copy, then the bundled resolver.js.
+        val resolverUrl = (project.findProperty("resolverUrl") as String?)
+            ?: System.getenv("RESOLVER_URL")
+            ?: ""
+        buildConfigField("String", "RESOLVER_URL", "\"" + resolverUrl + "\"")
     }
 
     buildFeatures {
@@ -29,6 +34,14 @@ android {
     }
 }
 
+// The bundled resolver is the repo-root resolver.js (single source of truth), copied into assets at build time.
+val copyResolver by tasks.registering(Copy::class) {
+    from(rootProject.file("resolver.js"))
+    into(layout.buildDirectory.dir("generated/resolverAssets"))
+}
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/resolverAssets"))
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(copyResolver) }
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -38,4 +51,7 @@ dependencies {
     implementation(libs.core.ktx)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.okhttp)
+    implementation(libs.coroutines.android)
+    implementation(libs.quickjs.kt)
 }

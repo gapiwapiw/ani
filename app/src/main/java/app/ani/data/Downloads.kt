@@ -142,7 +142,7 @@ object Downloads {
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine<Unit> { cont ->
                 helper.prepare(object : DownloadHelper.Callback {
-                    override fun onPrepared(helper: DownloadHelper) {
+                    override fun onPrepared(helper: DownloadHelper, tracksInfoAvailable: Boolean) {
                         try {
                             if (maxH != null) {
                                 val params = TrackSelectionParameters.Builder(ctx).setMaxVideoSize(Int.MAX_VALUE, maxH).build()

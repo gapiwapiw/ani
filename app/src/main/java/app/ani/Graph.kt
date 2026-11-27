@@ -5,6 +5,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.offline.DownloadManager
+import app.ani.data.Downloads
 import app.ani.data.Repo
 import app.ani.data.Resolver
 import app.ani.data.Store
@@ -14,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.concurrent.Executors
 
 /** Process-wide singletons. Created in [AniApplication] so services can use them after process death. */
 object Graph {
@@ -31,7 +36,22 @@ object Graph {
     /** Downloaded HLS data (segments, playlists). Shared by the download manager and offline playback. */
     @get:androidx.annotation.OptIn(UnstableApi::class)
     val cache: SimpleCache by lazy {
-        SimpleCache(File(app.filesDir, "dlcache"), NoOpCacheEvictor(), StandaloneDatabaseProvider(app))
+        SimpleCache(File(app.filesDir, "dlcache"), NoOpCacheEvictor(), dbProvider)
+    }
+
+    /** One provider shared by the cache and the download manager. */
+    val dbProvider: StandaloneDatabaseProvider by lazy { StandaloneDatabaseProvider(app) }
+
+    /** Max 2 downloads at once. Requests carry the resolver's headers through [Store.dlHeaders]. */
+    val downloadManager: DownloadManager by lazy {
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+        val upstream = ResolvingDataSource.Factory(http) { spec -> spec.withAdditionalHeaders(store.dlHeaders) }
+        DownloadManager(app, dbProvider, cache, upstream, Executors.newFixedThreadPool(6)).also {
+            it.maxParallelDownloads = 2
+        }
     }
 
     /** Used by Coil: adds the headers the resolver declares for image hosts. */
@@ -49,5 +69,6 @@ object Graph {
         resolver = Resolver(app, client)
         repo = Repo(resolver)
         scope.launch(Dispatchers.IO) { runCatching { resolver.init() } }
+        Downloads.start()
     }
 }

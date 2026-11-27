@@ -51,6 +51,7 @@ object AniIcons {
     val Rewind = icon("rewind", false, "M4 12a8 8 0 1 0 2.6 -5.9L4 8.5", "M4 4V8.5H8.5")
     val Forward = icon("forward", false, "M20 12a8 8 0 1 1 -2.6 -5.9L20 8.5", "M20 4V8.5H15.5")
     val Check = icon("check", false, "M5 12.5L9.5 17L19 7.5")
+    val Close = icon("close", false, "M6 6L18 18M18 6L6 18")
     val Tune = icon(
         "tune", false,
         "M4 8H13M19 8H20M4 16H5M11 16H20",

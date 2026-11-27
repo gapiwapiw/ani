@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -218,7 +219,18 @@ fun ShowScreen(
                                 },
                             )
                         }
-                        Ring(DlState.Idle, 0) { onDownload(season, n) }
+                        val dl = app.ani.data.Downloads.find(season.id, n, mode)
+                        val (rs, rp) = dl?.ring() ?: (DlState.Idle to 0)
+                        val dls by app.ani.data.Downloads.items.collectAsState()
+                        Ring(rs, rp) {
+                            when {
+                                dl == null -> onDownload(season, n)
+                                dl.done -> {}
+                                dl.active -> app.ani.data.Downloads.pause(dl)
+                                else -> app.ani.data.Downloads.resume(dl)
+                            }
+                        }
+                        if (dls.isEmpty()) Unit
                     }
                 }
                 if (list.size > limit) {

@@ -30,29 +30,45 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import app.ani.data.SubTrack
 
 @Composable
-private fun SubRow(label: String, size: String, initial: Boolean) {
-    var on by remember { mutableStateOf(initial) }
+private fun SubRow(label: String, on: Boolean, onToggle: () -> Unit) {
     val box by animateColorAsState(if (on) C.Ac else Color.Transparent, motion(Motion.D2), label = "ck")
     Row(
         Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(Shp.R2).background(C.S2)
-            .tap { on = !on }.padding(12.dp),
+            .tap { onToggle() }.padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(20.dp).clip(Shp.R1).background(box)
-                .hairBorder(Shp.R1),
+            Modifier.size(20.dp).clip(Shp.R1).background(box).hairBorder(Shp.R1),
             contentAlignment = Alignment.Center,
         ) { if (on) AIcon(AniIcons.Check, C.OnAc, 14.dp) }
         AText(label, Modifier.weight(1f))
-        AText(size, size = 12, color = C.Mut)
     }
 }
 
+/** Choices made in the sheet. quality is "best" or a label such as "720p". */
+data class DlChoice(val quality: String, val subs: List<SubTrack>)
+
 @Composable
-fun DownloadSheet(visible: Boolean, ep: String, onClose: () -> Unit, onStart: () -> Unit) {
+fun DownloadSheet(
+    visible: Boolean,
+    ep: String,
+    subs: List<SubTrack>?,
+    qualities: List<String>,
+    busy: Boolean,
+    error: String?,
+    onClose: () -> Unit,
+    onStart: (DlChoice) -> Unit,
+) {
+    var q by remember(ep, visible) { mutableStateOf("best") }
+    var picked by remember(ep, visible, subs) { mutableStateOf(setOf<Int>()) }
     AnimatedVisibility(visible, enter = fadeIn(motion(Motion.D2)), exit = fadeOut(motion(Motion.D2))) {
         Box(Modifier.fillMaxSize().background(Color(0x8C000000)).plainClick(onClose)) {
             Column(
@@ -74,17 +90,36 @@ fun DownloadSheet(visible: Boolean, ep: String, onClose: () -> Unit, onStart: ()
                 )
                 AText("Download episode $ep", size = 18, weight = 600)
                 AText("Choose subtitle languages and quality.", Modifier.padding(top = 2.dp, bottom = 16.dp), color = C.Mut)
-                AText("Subtitles", Modifier.padding(bottom = 8.dp), weight = 500, color = C.Mut)
-                SubRow("English", "12 KB", true)
-                SubRow("Arabic", "11 KB", false)
-                AText("Quality", Modifier.padding(top = 8.dp, bottom = 8.dp), weight = 500, color = C.Mut)
-                var q by remember { mutableIntStateOf(1) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("720p", "1080p").forEachIndexed { i, t -> Chip(t, on = i == q) { q = i } }
+                when {
+                    error != null -> AText(error, Modifier.padding(bottom = 16.dp), color = C.Mut)
+                    subs == null -> AText("Checking what is available…", Modifier.padding(bottom = 16.dp), color = C.Mut)
+                    else -> {
+                        if (subs.isNotEmpty()) {
+                            AText("Subtitles", Modifier.padding(bottom = 8.dp), weight = 500, color = C.Mut)
+                            Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                                subs.forEachIndexed { i, t ->
+                                    SubRow(t.label.ifBlank { t.lang }, i in picked) {
+                                        picked = if (i in picked) picked - i else picked + i
+                                    }
+                                }
+                            }
+                        }
+                        AText("Quality", Modifier.padding(top = 8.dp, bottom = 8.dp), weight = 500, color = C.Mut)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (listOf("Best") + qualities).forEach { t ->
+                                val v = if (t == "Best") "best" else t
+                                Chip(t, on = v == q) { q = v }
+                            }
+                        }
+                    }
                 }
                 Row(Modifier.padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Btn("Cancel", onClose, Modifier.weight(1f), ghost = true)
-                    Btn("Download", onStart, Modifier.weight(1f))
+                    Btn(
+                        if (busy) "Starting…" else "Download",
+                        { if (!busy && subs != null && error == null) onStart(DlChoice(q, picked.sorted().map { subs[it] })) },
+                        Modifier.weight(1f),
+                    )
                 }
             }
         }

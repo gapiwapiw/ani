@@ -47,6 +47,8 @@ import android.net.Network
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import app.ani.Graph
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.launch
 import app.ani.data.SeasonRef
 import app.ani.data.ShowGroup
 import app.ani.data.toShow
@@ -138,7 +140,22 @@ fun AniApp() {
     var q by rememberSaveable { mutableStateOf("") }
     var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     var target by remember { mutableStateOf<PlayTarget?>(null) }
+    var dlTarget by remember { mutableStateOf<PlayTarget?>(null) }
+    var dlLoaded by remember { mutableStateOf<app.ani.data.Loaded?>(null) }
+    var dlErr by remember { mutableStateOf<String?>(null) }
+    var dlBusy by remember { mutableStateOf(false) }
+    val dlItems by app.ani.data.Downloads.items.collectAsState()
+    LaunchedEffect(dlTarget) {
+        dlLoaded = null; dlErr = null; dlBusy = false
+        val d = dlTarget ?: return@LaunchedEffect
+        try {
+            dlLoaded = app.ani.data.Playback.load(d.g, d.season, d.ep, st.prefs.mode)
+        } catch (e: Exception) {
+            dlErr = e.message ?: "Could not check this episode"
+        }
+    }
     val online = rememberOnline()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val mode = st.prefs.mode
 
     var toastMsg by remember { mutableStateOf("") }
@@ -154,8 +171,8 @@ fun AniApp() {
     }
 
     // Back closes the player, then the show page, then exits.
-    BackHandler(enabled = target != null || openKey != null) {
-        if (target != null) target = null else openKey = null
+    BackHandler(enabled = dlTarget != null || target != null || openKey != null) {
+        if (dlTarget != null) dlTarget = null else if (target != null) target = null else openKey = null
     }
 
     val shownGroup = openKey?.let { st.group(it) }
@@ -174,12 +191,12 @@ fun AniApp() {
                     when (t) {
                         0 -> HomeScreen(open)
                         1 -> SearchScreen(q, mode, { q = it }, open)
-                        2 -> DownloadsScreen()
+                        2 -> DownloadsScreen { key -> st.group(key)?.let(open) }
                         else -> SettingsScreen(toast)
                     }
                 }
             }
-            BottomNav(tab, 0) { tab = it }
+            BottomNav(tab, dlItems.count { it.active }) { tab = it }
         }
 
         AnimatedVisibility(
@@ -196,9 +213,36 @@ fun AniApp() {
                     onMode = { st.updatePrefs(st.prefs.copy(mode = it)) },
                     onBack = { openKey = null },
                     onWatch = { s, ep -> target = PlayTarget(g, s, ep) },
-                    onDownload = { _, _ -> toast("Downloads are not available in this build yet") },
+                    onDownload = { s, ep -> dlTarget = PlayTarget(g, s, ep) },
                     toast = toast,
                 )
+            }
+        }
+
+        DownloadSheet(
+            visible = dlTarget != null,
+            ep = dlTarget?.ep ?: "",
+            subs = dlLoaded?.tracks,
+            qualities = dlLoaded?.info?.qualities?.map { it.label }.orEmpty(),
+            busy = dlBusy,
+            error = dlErr,
+            onClose = { dlTarget = null },
+        ) { choice ->
+            val d = dlTarget
+            val l = dlLoaded
+            if (d != null && l != null) {
+                dlBusy = true
+                scope.launch {
+                    try {
+                        app.ani.data.Downloads.enqueue(d.g, d.season, d.ep, st.prefs.mode, l, choice.subs, choice.quality)
+                        toast("Download started")
+                        dlTarget = null
+                    } catch (e: Exception) {
+                        dlErr = e.message ?: "Could not start the download"
+                    } finally {
+                        dlBusy = false
+                    }
+                }
             }
         }
 

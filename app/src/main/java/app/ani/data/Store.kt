@@ -42,6 +42,10 @@ class Store(private val file: File, private val scope: CoroutineScope) {
     var recentA by mutableStateOf<List<String>>(emptyList()); private set
     var prefs by mutableStateOf(Prefs()); private set
 
+    /** Headers (Referer, User-Agent) the download manager adds to every request. Set when a download is queued. */
+    @Volatile var dlHeaders: Map<String, String> = emptyMap()
+        private set
+
     private val lock = Mutex()
 
     init { load() }
@@ -89,6 +93,12 @@ class Store(private val file: File, private val scope: CoroutineScope) {
 
     fun updatePrefs(p: Prefs) { prefs = p; save() }
 
+    fun updateDlHeaders(h: Map<String, String>) {
+        if (h.isEmpty() || h == dlHeaders) return
+        dlHeaders = h
+        save()
+    }
+
     // ---- persistence ----
     private fun load() {
         try {
@@ -100,6 +110,7 @@ class Store(private val file: File, private val scope: CoroutineScope) {
             hist = o.optJSONObject("hist")?.let { h ->
                 h.keys().asSequence().associateWith { histFrom(it, h.getJSONObject(it)) }
             } ?: emptyMap()
+            o.optJSONObject("dlh")?.let { h -> dlHeaders = h.keys().asSequence().associateWith { h.getString(it) } }
             list = strings(o.optJSONArray("list"))
             later = strings(o.optJSONArray("later"))
             recentQ = strings(o.optJSONArray("rq"))
@@ -141,6 +152,7 @@ class Store(private val file: File, private val scope: CoroutineScope) {
         val h = JSONObject()
         for ((k, v) in hist) h.put(k, histTo(v))
         o.put("hist", h)
+        o.put("dlh", JSONObject(dlHeaders))
         o.put("list", JSONArray(list))
         o.put("later", JSONArray(later))
         o.put("rq", JSONArray(recentQ))

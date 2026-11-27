@@ -37,6 +37,9 @@ object Subs {
     /** Download and parse one subtitle file. Returns null when it cannot be read as text. */
     suspend fun load(url: String, referer: String): List<Cue>? = withContext(Dispatchers.IO) {
         try {
+            if (url.startsWith("file:")) {
+                return@withContext parse(java.io.File(url.removePrefix("file://")).readText())
+            }
             val b = Request.Builder().url(url)
             if (referer.isNotBlank()) b.header("Referer", referer)
             Graph.client.newCall(b.build()).execute().use { r ->

@@ -30,8 +30,15 @@ reference/ani-lite.zip: app.js = behavior spec, dl.js = downloader spec, lib.sh 
 - Sandbox cannot reach Maven/Gradle hosts. Look up versions with the `versions` workflow (.github/workflows/versions.yml), read its log via the API.
 - AGP 9.x has built-in Kotlin: do not apply org.jetbrains.kotlin.android.
 
+## Pinned versions (looked up 2026-11-27 via versions workflow)
+AGP 9.5.3, Gradle 9.9.2 (set in build.yml), JDK 21 (temurin), Kotlin 2.4.21, Compose BOM 2026.11.01, Media3 1.11.1, OkHttp 5.5.1, Coil 3.6.3, DataStore 1.3.0, activity-compose 1.13.0, lifecycle 2.11.1.
+Gotchas learned: Compose 1.13 needs compileSdk 37.1, so build.gradle.kts uses `compileSdk { version = release(37) { minorApiLevel = 1 } }`. AGP 9 has built-in Kotlin, so no kotlin.android plugin. Theme is the platform Material NoActionBar (no appcompat/material3).
+
+## CI helper (not in repo)
+Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file>/dispatches` needs `Content-Type: application/json`). Job logs: `GET /actions/jobs/<id>/logs` (follow redirects).
+
 ## Status
-- [ ] Repo + workflow + Gradle project skeleton compiles in CI
+- [x] Repo + workflow + Gradle project skeleton compiles in CI (run green, APK artifact `app-debug`)
 - [ ] Theme + static screens (fake data)
 - [ ] resolver.js + runtime + search/episodes
 - [ ] Player
@@ -40,7 +47,11 @@ reference/ani-lite.zip: app.js = behavior spec, dl.js = downloader spec, lib.sh 
 - [ ] README (build, push, update resolver)
 
 ## Next steps
-1. Get versions from the versions workflow, write the Gradle skeleton + build.yml, get CI green.
+1. Theme (`ui/theme`: colors, type, shapes, motion constants) + 1.6dp line-icon ImageVectors ported from the prototype's SVG symbols.
+2. Static screens with fake data: Home, Search, Downloads, Settings, Show page, Player UI, download sheet; bottom nav; back-button order (player, show page, exit).
+3. Launcher icon from reference/ani-lite.zip `public/icon.svg`, logo from `logo.svg` (vector drawables).
+4. Then resolver.js + runtime. Candidate QuickJS binding: `io.github.dokar3:quickjs-kt` (verify it is maintained and its version via the versions workflow; `app.cash.quickjs` 0.9.x is the old unmaintained one). Otherwise hidden WebView + OkHttp bridge.
+5. Add libs (media3, okhttp, coil, datastore, serialization) to app/build.gradle.kts only when first used. They are already in gradle/libs.versions.toml.
 
 ## Known risks
 - Resolver breaks when the site changes: edit resolver.js only.
@@ -48,4 +59,4 @@ reference/ani-lite.zip: app.js = behavior spec, dl.js = downloader spec, lib.sh 
 - Media3 API/version drift: check current docs before pinning versions.
 
 ## Session log
-- 2026-11-27: repo scaffolding (reference/, design/, HANDOFF.md, .gitignore).
+- 2026-11-27: repo scaffolding; versions looked up; Gradle skeleton + build.yml; CI green after the compileSdk 37.1 fix. Nothing else built yet.

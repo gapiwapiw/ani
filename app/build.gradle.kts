@@ -54,6 +54,11 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coroutines.android)
     implementation(libs.quickjs.kt)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.database)
+    implementation(libs.media3.datasource)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 }

@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,14 +54,30 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import app.ani.data.Show
+import android.content.Context
+import android.view.View
+import androidx.annotation.OptIn
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import app.ani.Graph
+import app.ani.data.Cue
+import app.ani.data.EpisodeRef
+import app.ani.data.Loaded
+import app.ani.data.Playback
+import app.ani.data.SeasonRef
+import app.ani.data.ShowGroup
+import app.ani.data.Subs
 import kotlinx.coroutines.delay
-
-private const val DUR = 1450
-private val SPEEDS = listOf("0.75×", "1×", "1.25×", "1.5×")
-private val SPEED_VALUES = listOf(0.75f, 1f, 1.25f, 1.5f)
-
-private fun fm(x: Int): String = "${x / 60}:${(x % 60).toString().padStart(2, '0')}"
 
 @Composable
 private fun PlayerBtn(icon: ImageVector, desc: String, size: Dp, onClick: () -> Unit) {
@@ -80,24 +97,150 @@ private fun MenuGroup(title: String, options: List<String>, selected: Int, onSel
     }
 }
 
-/** Static player UI. Playback is simulated with a timer until Media3 is wired in. */
+private val SPEEDS = listOf("0.75×", "1×", "1.25×", "1.5×", "2×")
+private val SPEED_VALUES = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+
+private fun fm(ms: Long): String {
+    val x = (ms / 1000).toInt().coerceAtLeast(0)
+    return if (x >= 3600) "${x / 3600}:${(x % 3600 / 60).toString().padStart(2, '0')}:${(x % 60).toString().padStart(2, '0')}"
+    else "${x / 60}:${(x % 60).toString().padStart(2, '0')}"
+}
+
+private sealed interface Load {
+    data object Busy : Load
+    data class Ok(val l: Loaded) : Load
+    data class Fail(val msg: String) : Load
+}
+
+@OptIn(UnstableApi::class)
+private fun buildPlayer(ctx: Context, l: Loaded, startMs: Long, speed: Float): ExoPlayer {
+    val p = ExoPlayer.Builder(ctx)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(Playback.dataSourceFactory(l.info.headers)))
+        .build()
+    p.setMediaItem(MediaItem.fromUri(l.info.m3u8))
+    p.setPlaybackSpeed(speed)
+    p.prepare()
+    if (startMs > 0) p.seekTo(startMs)
+    p.playWhenReady = true
+    return p
+}
+
+@OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
-    var t by remember { mutableIntStateOf(580) }
-    var playing by remember { mutableStateOf(true) }
+fun PlayerScreen(g: ShowGroup, season: SeasonRef, startEp: String, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val st = Graph.store
+    val prefs = st.prefs
+    val mode = prefs.mode
+    var ep by remember { mutableStateOf(startEp) }
+    var attempt by remember { mutableIntStateOf(0) }
     var ui by remember { mutableStateOf(true) }
     var menu by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
+    var fill by remember { mutableStateOf(false) }
     var quality by remember { mutableIntStateOf(0) }
-    var subLang by remember { mutableIntStateOf(1) }
-    var speed by remember { mutableIntStateOf(1) }
+    var subIdx by remember { mutableIntStateOf(-1) }
+    var speed by remember { mutableIntStateOf(SPEED_VALUES.indexOf(prefs.speed).coerceAtLeast(1)) }
+    var playing by remember { mutableStateOf(true) }
+    var buffering by remember { mutableStateOf(true) }
+    var playErr by remember { mutableStateOf<String?>(null) }
+    var posMs by remember { mutableLongStateOf(0L) }
+    var durMs by remember { mutableLongStateOf(0L) }
+    var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+    var subText by remember { mutableStateOf("") }
 
-    LaunchedEffect(playing, speed) {
-        while (playing) {
-            delay((1000 / SPEED_VALUES[speed]).toLong())
-            t = minOf(DUR, t + 1)
+    val epList by produceState<List<EpisodeRef>>(emptyList(), season.id, mode) {
+        value = runCatching { Graph.repo.episodes(season.id, mode) }.getOrDefault(emptyList())
+    }
+
+    var load by remember { mutableStateOf<Load>(Load.Busy) }
+    LaunchedEffect(ep, mode, attempt) {
+        load = Load.Busy
+        playErr = null
+        load = try {
+            Load.Ok(Playback.load(g, season, ep, mode))
+        } catch (e: Exception) {
+            Load.Fail(e.message ?: "Could not load this episode")
         }
     }
+    val loaded = (load as? Load.Ok)?.l
+
+    val player = remember(loaded) {
+        loaded?.let {
+            val w = st.hist[season.id]?.w?.get(ep)
+            val start = if (w != null && w.second > 0 && w.first / w.second < 0.92 && w.first > 5) (w.first * 1000).toLong() else 0L
+            buildPlayer(ctx, it, start, SPEED_VALUES[speed])
+        }
+    }
+
+    fun saveProgress() {
+        val p = player ?: return
+        val d = p.duration
+        if (d > 0) st.progress(g, season.id, ep, p.currentPosition / 1000.0, d / 1000.0)
+    }
+
+    DisposableEffect(player) {
+        if (player == null) return@DisposableEffect onDispose { }
+        val l = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { playing = playWhenReady }
+            override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_ENDED) {
+                    saveProgress()
+                    val i = epList.indexOfFirst { it.number == ep }
+                    if (i >= 0 && i + 1 < epList.size) ep = epList[i + 1].number
+                }
+            }
+            override fun onPlayerError(error: PlaybackException) { playErr = error.message ?: "Playback error" }
+        }
+        player.addListener(l)
+        onDispose {
+            saveProgress()
+            player.removeListener(l)
+            player.release()
+        }
+    }
+
+    // Position polling, progress saving and subtitle lookup.
+    LaunchedEffect(player) {
+        val p = player ?: return@LaunchedEffect
+        var n = 0
+        while (true) {
+            posMs = p.currentPosition
+            durMs = p.duration.coerceAtLeast(0L)
+            val t = posMs
+            val txt = cues.filter { t >= it.s && t < it.e }.joinToString("\n") { it.text }
+            if (txt != subText) subText = txt
+            if (++n % 40 == 0) saveProgress()
+            delay(250)
+        }
+    }
+
+    // Subtitles: pick the preferred language when a source loads, then read the chosen file.
+    LaunchedEffect(loaded) {
+        val l = loaded ?: return@LaunchedEffect
+        subIdx = if (prefs.subLang == "Off") -1 else {
+            val want = prefs.subLang.lowercase()
+            val i = l.tracks.indexOfFirst { it.label.lowercase().contains(want) || it.lang.lowercase().contains(want) }
+            if (i >= 0) i else if (l.tracks.isNotEmpty()) 0 else -1
+        }
+        quality = 0
+    }
+    LaunchedEffect(loaded, subIdx) {
+        val l = loaded ?: return@LaunchedEffect
+        cues = emptyList()
+        subText = ""
+        if (subIdx in l.tracks.indices) cues = Subs.load(l.tracks[subIdx].url, l.info.referer).orEmpty()
+    }
+    LaunchedEffect(player, quality, loaded) {
+        val p = player ?: return@LaunchedEffect
+        val h = loaded?.info?.qualities?.getOrNull(quality - 1)?.height
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setMaxVideoSize(Int.MAX_VALUE, if (quality > 0 && h != null && h > 0) h else Int.MAX_VALUE)
+            .build()
+    }
+    LaunchedEffect(player, speed) { player?.setPlaybackSpeed(SPEED_VALUES[speed]) }
+
     // Controls hide after a pause in interaction.
     LaunchedEffect(ui, playing, menu, tick) {
         if (ui && playing && !menu) {
@@ -122,25 +265,44 @@ fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
     }
 
     val subBottom by animateDpAsState(if (ui) 96.dp else 32.dp, motion(Motion.D3), label = "sub")
+    val subSize = prefs.subSize
+    val title = g.name
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(
-            Modifier.fillMaxSize()
-                .background(Brush.linearGradient(listOf(Color(0xFF24201E), Color(0xFF0C0B0B))))
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { o ->
-                            t = if (o.x < size.width / 2) maxOf(0, t - 10) else minOf(DUR, t + 10)
-                            tick++
-                        },
-                        onTap = { ui = !ui; tick++ },
-                    )
+        if (player != null) {
+            AndroidView(
+                factory = { c ->
+                    PlayerView(c).apply {
+                        useController = false
+                        subtitleView?.visibility = View.GONE
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    }
                 },
+                update = {
+                    it.player = player
+                    it.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
+            Modifier.fillMaxSize().pointerInput(player) {
+                detectTapGestures(
+                    onDoubleTap = { o ->
+                        val p = player ?: return@detectTapGestures
+                        val d = p.duration.coerceAtLeast(0L)
+                        val to = if (o.x < size.width / 2) p.currentPosition - 10_000 else p.currentPosition + 10_000
+                        p.seekTo(to.coerceIn(0L, if (d > 0) d else Long.MAX_VALUE))
+                        tick++
+                    },
+                    onTap = { ui = !ui; tick++ },
+                )
+            },
         )
-        if (subLang != 0) {
+        if (subText.isNotEmpty()) {
             Box(Modifier.fillMaxSize().padding(bottom = subBottom), contentAlignment = Alignment.BottomCenter) {
                 BasicText(
-                    "You didn't have to come all this way.",
+                    subText,
                     Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                     style = TextStyle(
                         color = Color(0xFFF2EEE8),
@@ -153,7 +315,28 @@ fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
                 )
             }
         }
-        AnimatedVisibility(ui, enter = fadeIn(motion(Motion.D3)), exit = fadeOut(motion(Motion.D3))) {
+        val status = when {
+            load is Load.Fail -> (load as Load.Fail).msg
+            playErr != null -> playErr
+            else -> null
+        }
+        if (status != null) {
+            Column(
+                Modifier.align(Alignment.Center).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AText("Couldn’t play this episode", size = 16, weight = 500)
+                AText(status, color = C.Mut, align = TextAlign.Center)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Btn("Try again", { attempt++ }, ghost = true)
+                    Btn("Close", onClose, ghost = true)
+                }
+            }
+        } else if (load is Load.Busy || buffering) {
+            AText("Loading…", Modifier.align(Alignment.Center), color = C.Tx.copy(alpha = 0.7f))
+        }
+        AnimatedVisibility(ui || status != null, enter = fadeIn(motion(Motion.D3)), exit = fadeOut(motion(Motion.D3))) {
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
@@ -169,8 +352,8 @@ fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
                 ) {
                     IconBtn(AniIcons.Back, "Close player", onClose)
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        AText(s.title, Modifier.weight(1f, fill = false), size = 16, weight = 500, maxLines = 1)
-                        AText("Episode 6", Modifier.padding(start = 8.dp), color = C.Tx.copy(alpha = 0.7f), maxLines = 1)
+                        AText(title, Modifier.weight(1f, fill = false), size = 16, weight = 500, maxLines = 1)
+                        AText("Episode $ep", Modifier.padding(start = 8.dp), color = C.Tx.copy(alpha = 0.7f), maxLines = 1)
                     }
                     IconBtn(AniIcons.Tune, "Options", { menu = true; tick++ })
                 }
@@ -179,22 +362,34 @@ fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(32.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PlayerBtn(AniIcons.Rewind, "Back 10 seconds", 36.dp) { t = maxOf(0, t - 10); tick++ }
+                    PlayerBtn(AniIcons.Rewind, "Back 10 seconds", 36.dp) {
+                        player?.seekTo((player.currentPosition - 10_000).coerceAtLeast(0L)); tick++
+                    }
                     PlayerBtn(
                         if (playing) AniIcons.PauseFilled else AniIcons.PlayFilled,
                         "Play or pause", 56.dp,
-                    ) { playing = !playing; tick++ }
-                    PlayerBtn(AniIcons.Forward, "Forward 10 seconds", 36.dp) { t = minOf(DUR, t + 10); tick++ }
+                    ) { player?.let { it.playWhenReady = !it.playWhenReady }; tick++ }
+                    PlayerBtn(AniIcons.Forward, "Forward 10 seconds", 36.dp) {
+                        player?.let { p ->
+                            val d = p.duration.coerceAtLeast(0L)
+                            p.seekTo((p.currentPosition + 10_000).coerceIn(0L, if (d > 0) d else Long.MAX_VALUE))
+                        }
+                        tick++
+                    }
                 }
                 Row(
                     Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AText(fm(t), Modifier.widthIn(min = 44.dp), align = TextAlign.Center)
-                    AniSlider(t / DUR.toFloat(), { t = (it * DUR).toInt(); tick++ }, Modifier.weight(1f))
-                    AText(fm(DUR), Modifier.widthIn(min = 44.dp), align = TextAlign.Center)
-                    IconBtn(AniIcons.Expand, "Fill screen", { tick++ })
+                    AText(fm(posMs), Modifier.widthIn(min = 44.dp), align = TextAlign.Center)
+                    AniSlider(
+                        if (durMs > 0) (posMs / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
+                        { f -> if (durMs > 0) { player?.seekTo((f * durMs).toLong()); posMs = (f * durMs).toLong() }; tick++ },
+                        Modifier.weight(1f),
+                    )
+                    AText(fm(durMs), Modifier.widthIn(min = 44.dp), align = TextAlign.Center)
+                    IconBtn(AniIcons.Expand, "Fill screen", { fill = !fill; tick++ })
                 }
             }
         }
@@ -212,8 +407,10 @@ fun PlayerScreen(s: Show, subSize: Int, onClose: () -> Unit) {
                         .plainClick { }
                         .verticalScroll(rememberScrollState()).padding(8.dp),
                 ) {
-                    MenuGroup("Quality", listOf("Auto", "1080p", "720p"), quality) { quality = it }
-                    MenuGroup("Subtitles", listOf("Off", "English", "Arabic"), subLang) { subLang = it }
+                    val qs = listOf("Auto") + (loaded?.info?.qualities?.map { it.label } ?: emptyList())
+                    MenuGroup("Quality", qs, quality) { quality = it }
+                    val ss = listOf("Off") + (loaded?.tracks?.map { it.label.ifBlank { it.lang } } ?: emptyList())
+                    MenuGroup("Subtitles", ss, subIdx + 1) { subIdx = it - 1 }
                     MenuGroup("Speed", SPEEDS, speed) { speed = it }
                 }
             }

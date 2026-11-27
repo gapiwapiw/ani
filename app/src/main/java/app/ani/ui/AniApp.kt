@@ -205,7 +205,7 @@ fun AniApp() {
         AnimatedVisibility(target != null, enter = fadeIn(motion(Motion.D2)), exit = fadeOut(motion(Motion.D2))) {
             val tg = remember(target) { target }
             if (tg != null) {
-                PlayerScreen(tg.g.toShow(), st.prefs.subSize) { target = null }
+                PlayerScreen(tg.g, tg.season, tg.ep) { target = null }
             }
         }
 

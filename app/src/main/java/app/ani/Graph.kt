@@ -1,6 +1,10 @@
 package app.ani
 
 import android.app.Application
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.cache.NoOpCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import app.ani.data.Repo
 import app.ani.data.Resolver
 import app.ani.data.Store
@@ -23,6 +27,12 @@ object Graph {
         private set
     lateinit var repo: Repo
         private set
+
+    /** Downloaded HLS data (segments, playlists). Shared by the download manager and offline playback. */
+    @get:androidx.annotation.OptIn(UnstableApi::class)
+    val cache: SimpleCache by lazy {
+        SimpleCache(File(app.filesDir, "dlcache"), NoOpCacheEvictor(), StandaloneDatabaseProvider(app))
+    }
 
     /** Used by Coil: adds the headers the resolver declares for image hosts. */
     val imageClient: OkHttpClient by lazy {

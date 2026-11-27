@@ -16,7 +16,7 @@ Native Kotlin/Compose Android app replacing a Termux web app. Personal use only.
 - All site-specific scraping lives ONLY in resolver.js (repo root): search(query, mode), episodes(showId, mode), sources(showId, ep, mode), version. App injects http.get + base64/xor helpers.
 - Resolver loads: remote RESOLVER_URL, then cached copy, then bundled copy. Settings shows source/version/refresh.
 - Port only the resolving logic from the original lib.sh/server.js, not ani-cli's menus/history/mpv/update.
-- Private repo means raw URL needs a read-only token: [DECISION PENDING: public repo / read-only token via Actions secret into BuildConfig].
+- Resolver URL decision (made 2026-11-27, owner had not answered): bundled resolver.js plus an OPTIONAL `BuildConfig.RESOLVER_URL` (gradle property `-PresolverUrl=` or env `RESOLVER_URL`, default empty). Empty means cached copy, then bundled. The owner can make the repo public later and set the URL, no code change needed.
 - Downloads: foreground service (dataSync), max 2 concurrent, subtitles saved alongside, offline playback with the same headers/referer.
 
 ## Design tokens
@@ -40,7 +40,7 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 ## Status
 - [x] Repo + workflow + Gradle project skeleton compiles in CI (run green, APK artifact `app-debug`)
 - [x] Theme + static screens (fake data): Home, Search, Downloads, Settings, Show page, download sheet, Player UI (simulated timer), launcher icon. CI green.
-- [ ] resolver.js + runtime + search/episodes
+- [x] resolver.js (search/episodes/sources/info/findSubs/toVtt + season grouping) and QuickJS runtime `data/Resolver.kt` compile in CI. NOT run on a device. quickjs-kt package is `com.dokar.quickjs` (group id is io.github.dokar3). Bundled copy: Gradle task copyResolver copies root resolver.js into assets.
 - [ ] Player
 - [ ] Downloads + offline
 - [ ] History, list, watch later, settings
@@ -65,4 +65,5 @@ Not Material: only foundation/ui/animation. Edge-to-edge is on (targetSdk 37), s
 
 ## Session log
 - 2026-11-27: repo scaffolding; versions looked up; Gradle skeleton + build.yml; CI green after the compileSdk 37.1 fix.
+- 2026-11-27 (session 3): resolver.js + Resolver.kt + build wiring, CI green (fixes: assets srcDir must be a File on AGP 9, quickjs package name).
 - 2026-11-27 (later): theme, icons, components, all static screens, launcher icon; CI green on second try (two import fixes). Not run on a device. Logo uses the prototype's calm colors, not logo.svg's old red.

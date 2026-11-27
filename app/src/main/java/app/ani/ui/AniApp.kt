@@ -155,6 +155,7 @@ fun AniApp() {
         }
     }
     val online = rememberOnline()
+    val ctx = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val mode = st.prefs.mode
 
@@ -231,6 +232,7 @@ fun AniApp() {
             val d = dlTarget
             val l = dlLoaded
             if (d != null && l != null) {
+                (ctx as? app.ani.MainActivity)?.askNotifications()
                 dlBusy = true
                 scope.launch {
                     try {

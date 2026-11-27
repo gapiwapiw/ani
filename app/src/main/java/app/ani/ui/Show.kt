@@ -181,6 +181,7 @@ fun ShowScreen(
                 }
                 val h = st.hist[season.id]
                 val titles = if (season.kind == "season") meta?.epTitles?.get(season.num) else null
+                val thumbs = if (season.kind == "season") meta?.epThumbs?.get(season.num) else null
                 list.take(limit).forEach { e ->
                     val n = e.number
                     val w = h?.w?.get(n)
@@ -201,6 +202,12 @@ fun ShowScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             AText(n, size = 18, weight = 500, color = Color.hsl(s.hue, 0.14f, 0.42f))
+                            thumbs?.get(n)?.takeIf { it.isNotBlank() }?.let { u ->
+                                AsyncImage(
+                                    model = u, contentDescription = null, contentScale = ContentScale.Crop,
+                                    modifier = Modifier.matchParentSize(),
+                                )
+                            }
                             if (frac > 0.01f && !watched) {
                                 Box(
                                     Modifier.align(Alignment.BottomStart).fillMaxWidth(frac.coerceIn(0f, 1f))

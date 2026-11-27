@@ -46,6 +46,8 @@ data class ShowMeta(
     val bg: String,
     /** season number -> (episode number -> title). */
     val epTitles: Map<Int, Map<String, String>> = emptyMap(),
+    /** season number -> (episode number -> thumbnail url). */
+    val epThumbs: Map<Int, Map<String, String>> = emptyMap(),
 )
 
 data class ResolverStatus(

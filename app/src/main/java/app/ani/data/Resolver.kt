@@ -185,7 +185,8 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
             o.optString("desc"),
             o.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
             o.optString("bg"),
-            epTitles = parseEpTitles(o.optJSONObject("eps")),
+            epTitles = parseEpField(o.optJSONObject("eps"), "t"),
+            epThumbs = parseEpField(o.optJSONObject("eps"), "th"),
         )
     }
 
@@ -203,13 +204,13 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
     suspend fun toVtt(text: String): String =
         JSONObject("{\"v\":" + call("toVtt(${q(text)})") + "}").getString("v")
 
-    private fun parseEpTitles(eps: JSONObject?): Map<Int, Map<String, String>> {
+    private fun parseEpField(eps: JSONObject?, field: String): Map<Int, Map<String, String>> {
         if (eps == null) return emptyMap()
         val out = HashMap<Int, Map<String, String>>()
         for (s in eps.keys()) {
             val m = eps.getJSONObject(s)
             val inner = HashMap<String, String>()
-            for (e in m.keys()) inner[e] = m.getJSONObject(e).optString("t", "")
+            for (e in m.keys()) inner[e] = m.getJSONObject(e).optString(field, "")
             out[s.toIntOrNull() ?: continue] = inner
         }
         return out

@@ -39,7 +39,7 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 
 ## Status
 - [x] Repo + workflow + Gradle project skeleton compiles in CI (run green, APK artifact `app-debug`)
-- [ ] Theme + static screens (fake data)
+- [x] Theme + static screens (fake data): Home, Search, Downloads, Settings, Show page, download sheet, Player UI (simulated timer), launcher icon. CI green.
 - [ ] resolver.js + runtime + search/episodes
 - [ ] Player
 - [ ] Downloads + offline
@@ -47,11 +47,16 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 - [ ] README (build, push, update resolver)
 
 ## Next steps
-1. Theme (`ui/theme`: colors, type, shapes, motion constants) + 1.6dp line-icon ImageVectors ported from the prototype's SVG symbols.
-2. Static screens with fake data: Home, Search, Downloads, Settings, Show page, Player UI, download sheet; bottom nav; back-button order (player, show page, exit).
-3. Launcher icon from reference/ani-lite.zip `public/icon.svg`, logo from `logo.svg` (vector drawables).
-4. Then resolver.js + runtime. Candidate QuickJS binding: `io.github.dokar3:quickjs-kt` (verify it is maintained and its version via the versions workflow; `app.cash.quickjs` 0.9.x is the old unmaintained one). Otherwise hidden WebView + OkHttp bridge.
-5. Add libs (media3, okhttp, coil, datastore, serialization) to app/build.gradle.kts only when first used. They are already in gradle/libs.versions.toml.
+1. resolver.js (repo root) + runtime. Use `io.github.dokar3:quickjs-kt:1.0.18` (published, versions workflow confirms; check its README for the define/function/async API before coding). The old app.cash.quickjs is unmaintained. Port `hianime_*` from reference/ani-lite.zip `ani/lib.sh`, `getSources` from `server.js`, plus `subs.js` and `group.js` (season grouping). Contract in pleasereadthisifyouareclaude.md. Loading order: remote RESOLVER_URL, cached copy in filesDir, bundled asset. Settings shows source/version/refresh.
+2. Replace FakeShows/FakeEpisodes (app/src/main/java/app/ani/data/Fake.kt) with repository + resolver data; add OkHttp, Coil (posters), DataStore (history, my list, watch later, settings), serialization to app/build.gradle.kts. Behavior spec: ani/public/app.js in the zip.
+3. Real player: Media3 ExoPlayer + HLS + OkHttp data source with referer/headers, resume position, quality/subtitle/speed menus. UI is already in ui/Player.kt (timer is simulated); keep the controls, replace the black box with PlayerView/AndroidView (surface only, controls stay Compose).
+4. Downloads: DownloadService (dataSync), max 2 concurrent, subtitles alongside, offline playback.
+5. Settings pickers are tap-to-cycle placeholders; make them real and persisted. Add offline banner, storage summary, resolver status.
+6. README (build, push, update resolver).
+
+## UI map (app/src/main/java/app/ani/ui)
+Theme.kt (colors C, shapes Shp, Motion, reduced-motion), Icons.kt (ImageVectors + AniLogo), Components.kt (AText, tap, Poster, ShowCard, Seg, Btn, IconBtn, Ring, AniSlider...), AniApp.kt (tabs, nav, back order sheet then player then show), Home/Search/Downloads/Settings/Show/Sheets/Player.kt.
+Not Material: only foundation/ui/animation. Edge-to-edge is on (targetSdk 37), so insets are handled per screen.
 
 ## Known risks
 - Resolver breaks when the site changes: edit resolver.js only.
@@ -59,4 +64,5 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 - Media3 API/version drift: check current docs before pinning versions.
 
 ## Session log
-- 2026-11-27: repo scaffolding; versions looked up; Gradle skeleton + build.yml; CI green after the compileSdk 37.1 fix. Nothing else built yet.
+- 2026-11-27: repo scaffolding; versions looked up; Gradle skeleton + build.yml; CI green after the compileSdk 37.1 fix.
+- 2026-11-27 (later): theme, icons, components, all static screens, launcher icon; CI green on second try (two import fixes). Not run on a device. Logo uses the prototype's calm colors, not logo.svg's old red.

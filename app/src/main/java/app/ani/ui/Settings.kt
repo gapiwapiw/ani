@@ -65,7 +65,7 @@ fun SettingsScreen(toast: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
         Group("Playback") {
             ChoiceRow("Subtitle language", listOf("Off", "English", "Arabic", "French", "Spanish", "Portuguese", "German"), p.subLang) {
-                st.setPrefs(p.copy(subLang = it))
+                st.updatePrefs(p.copy(subLang = it))
             }
             Hair()
             Row(
@@ -76,18 +76,18 @@ fun SettingsScreen(toast: (String) -> Unit) {
                 AText("Subtitle size")
                 AniSlider(
                     value = (p.subSize - 16) / 14f,
-                    onChange = { st.setPrefs(p.copy(subSize = (16 + it * 14).roundToInt())) },
+                    onChange = { st.updatePrefs(p.copy(subSize = (16 + it * 14).roundToInt())) },
                     modifier = Modifier.width(140.dp),
                     track = C.S3,
                 )
             }
             Hair()
             ChoiceRow("Default speed", speeds, speeds[speedVals.indexOf(p.speed).coerceAtLeast(1)]) {
-                st.setPrefs(p.copy(speed = speedVals[speeds.indexOf(it)]))
+                st.updatePrefs(p.copy(speed = speedVals[speeds.indexOf(it)]))
             }
             Hair()
             ChoiceRow("Download quality", listOf("Best", "1080p", "720p", "480p"), when (p.quality) { "best" -> "Best"; else -> p.quality }) {
-                st.setPrefs(p.copy(quality = if (it == "Best") "best" else it))
+                st.updatePrefs(p.copy(quality = if (it == "Best") "best" else it))
             }
         }
         Group("Source", top = 24) {

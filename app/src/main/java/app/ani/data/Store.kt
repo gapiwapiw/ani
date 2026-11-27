@@ -87,7 +87,7 @@ class Store(private val file: File, private val scope: CoroutineScope) {
         save()
     }
 
-    fun setPrefs(p: Prefs) { prefs = p; save() }
+    fun updatePrefs(p: Prefs) { prefs = p; save() }
 
     // ---- persistence ----
     private fun load() {

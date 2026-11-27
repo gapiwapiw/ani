@@ -163,7 +163,7 @@ fun AniApp() {
 
     Box(Modifier.fillMaxSize().background(C.Bg)) {
         Column(Modifier.fillMaxSize().imePadding()) {
-            Header(tab, q, { q = it }, if (mode == "dub") 1 else 0) { st.setPrefs(st.prefs.copy(mode = if (it == 1) "dub" else "sub")) }
+            Header(tab, q, { q = it }, if (mode == "dub") 1 else 0) { st.updatePrefs(st.prefs.copy(mode = if (it == 1) "dub" else "sub")) }
             if (!online) {
                 Box(Modifier.fillMaxWidth().background(C.S2).padding(horizontal = 16.dp, vertical = 8.dp)) {
                     AText("You are offline. Downloaded episodes still play.", size = 12, color = C.Mut)
@@ -193,7 +193,7 @@ fun AniApp() {
                 ShowScreen(
                     g = g,
                     mode = mode,
-                    onMode = { st.setPrefs(st.prefs.copy(mode = it)) },
+                    onMode = { st.updatePrefs(st.prefs.copy(mode = it)) },
                     onBack = { openKey = null },
                     onWatch = { s, ep -> target = PlayTarget(g, s, ep) },
                     onDownload = { _, _ -> toast("Downloads are not available in this build yet") },

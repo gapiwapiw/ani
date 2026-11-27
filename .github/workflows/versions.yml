@@ -1,0 +1,26 @@
+name: versions
+on: workflow_dispatch
+jobs:
+  v:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Latest versions
+        run: |
+          latest(){ curl -fsS "$1" | grep -oE '<version>[^<]+' | sed 's/<version>//' | grep -vE 'alpha|beta|rc|RC|SNAPSHOT|-M|dev' | sort -V | tail -3 | tr '\n' ' '; echo; }
+          G=https://dl.google.com/dl/android/maven2; M=https://repo1.maven.org/maven2
+          echo "AGP:      $(latest $G/com/android/tools/build/gradle/maven-metadata.xml)"
+          echo "BOM:      $(latest $G/androidx/compose/compose-bom/maven-metadata.xml)"
+          echo "media3:   $(latest $G/androidx/media3/media3-exoplayer/maven-metadata.xml)"
+          echo "activity: $(latest $G/androidx/activity/activity-compose/maven-metadata.xml)"
+          echo "core-ktx: $(latest $G/androidx/core/core-ktx/maven-metadata.xml)"
+          echo "lifecycle:$(latest $G/androidx/lifecycle/lifecycle-runtime-compose/maven-metadata.xml)"
+          echo "datastore:$(latest $G/androidx/datastore/datastore-preferences/maven-metadata.xml)"
+          echo "okhttp:   $(latest $M/com/squareup/okhttp3/okhttp/maven-metadata.xml)"
+          echo "coil3:    $(latest $M/io/coil-kt/coil3/coil-compose/maven-metadata.xml)"
+          echo "coil3net: $(latest $M/io/coil-kt/coil3/coil-network-okhttp/maven-metadata.xml)"
+          echo "kotlin:   $(latest $M/org/jetbrains/kotlin/kotlin-gradle-plugin/maven-metadata.xml)"
+          echo "quickjs:  $(latest $M/app/cash/quickjs/quickjs-android/maven-metadata.xml)"
+          echo "zipline:  $(latest $M/app/cash/zipline/zipline-android/maven-metadata.xml)"
+          echo "coroutines: $(latest $M/org/jetbrains/kotlinx/kotlinx-coroutines-android/maven-metadata.xml)"
+          echo "serialization: $(latest $M/org/jetbrains/kotlinx/kotlinx-serialization-json/maven-metadata.xml)"
+          echo "gradle:   $(curl -fsS https://services.gradle.org/versions/current | grep '"version"')"

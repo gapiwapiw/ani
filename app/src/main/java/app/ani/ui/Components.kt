@@ -59,6 +59,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.ani.data.Show
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 
 /** Text with tabular numerals. Sizes 12/14/16/18/22/28, weights 400/500/600. */
 @Composable
@@ -136,6 +138,12 @@ fun Poster(s: Show, modifier: Modifier = Modifier, small: Boolean = false) {
             AIcon(AniIcons.Film, C.Mut, 28.dp)
         } else {
             AText(s.title.take(1), size = if (small) 18 else 28, weight = 500, color = s.fg())
+            if (s.thumb.isNotBlank()) {
+                AsyncImage(
+                    model = s.thumb, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

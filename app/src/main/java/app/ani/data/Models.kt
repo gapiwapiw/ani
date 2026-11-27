@@ -44,6 +44,8 @@ data class ShowMeta(
     val desc: String,
     val genres: List<String>,
     val bg: String,
+    /** season number -> (episode number -> title). */
+    val epTitles: Map<Int, Map<String, String>> = emptyMap(),
 )
 
 data class ResolverStatus(

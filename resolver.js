@@ -15,6 +15,8 @@ var version = 1;
 
 var BASE = 'https://hianime.at';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+/* Headers the app sends when loading poster images. */
+var imageHeaders = { 'Referer': BASE + '/', 'User-Agent': UA };
 var XOR_KEY = 'otaku-embed-v1';
 var CINE = 'https://v3-cinemeta.strem.io';
 var OSUB = 'https://opensubtitles-v3.strem.io';

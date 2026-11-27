@@ -54,4 +54,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coroutines.android)
     implementation(libs.quickjs.kt)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 }

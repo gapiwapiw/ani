@@ -26,6 +26,10 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
         .callTimeout(25, TimeUnit.SECONDS)
         .build()
 
+    /** Headers for poster requests, declared by resolver.js (imageHeaders). */
+    @Volatile var imageHeaders: Map<String, String> = emptyMap()
+        private set
+
     private val cacheFile get() = File(ctx.filesDir, "resolver.js")
     private val metaFile get() = File(ctx.filesDir, "resolver.meta")
 
@@ -37,19 +41,30 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
     suspend fun init() {
         if (script != null) return
         if (BuildConfig.RESOLVER_URL.isNotBlank()) refresh()
-        if (script != null) return
+        if (script != null) { loadImageHeaders(); return }
         val cached = runCatching { cacheFile.readText() }.getOrNull()
         if (!cached.isNullOrBlank()) {
             val v = versionOf(cached)
             if (v != null) {
                 script = cached
                 _status.value = ResolverStatus("cached", v, cacheFile.lastModified(), null)
+                loadImageHeaders()
                 return
             }
         }
         val bundled = ctx.assets.open("resolver.js").bufferedReader().use { it.readText() }
         script = bundled
         _status.value = ResolverStatus("bundled", versionOf(bundled) ?: 0, 0L, null)
+        loadImageHeaders()
+    }
+
+    private suspend fun loadImageHeaders() {
+        try {
+            val o = JSONObject(call("(typeof imageHeaders === 'undefined' ? {} : imageHeaders)", skipInit = true))
+            imageHeaders = o.keys().asSequence().associateWith { o.getString(it) }
+        } catch (e: Exception) {
+            imageHeaders = emptyMap()
+        }
     }
 
     /** Fetch RESOLVER_URL, validate, cache. Returns an error message or null on success. */
@@ -102,8 +117,8 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
     }
 
     /** Evaluate `expr` (a JS expression, may await) and return its JSON string. */
-    private suspend fun call(expr: String): String {
-        init()
+    private suspend fun call(expr: String, skipInit: Boolean = false): String {
+        if (!skipInit) init()
         val src = script ?: error("Resolver not loaded")
         val js = QuickJs.create(Dispatchers.Default)
         try {
@@ -170,6 +185,7 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
             o.optString("desc"),
             o.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
             o.optString("bg"),
+            epTitles = parseEpTitles(o.optJSONObject("eps")),
         )
     }
 
@@ -186,6 +202,18 @@ class Resolver(private val ctx: Context, baseClient: OkHttpClient) {
     /** Raw subtitle text -> WebVTT (conversion rules live in resolver.js). */
     suspend fun toVtt(text: String): String =
         JSONObject("{\"v\":" + call("toVtt(${q(text)})") + "}").getString("v")
+
+    private fun parseEpTitles(eps: JSONObject?): Map<Int, Map<String, String>> {
+        if (eps == null) return emptyMap()
+        val out = HashMap<Int, Map<String, String>>()
+        for (s in eps.keys()) {
+            val m = eps.getJSONObject(s)
+            val inner = HashMap<String, String>()
+            for (e in m.keys()) inner[e] = m.getJSONObject(e).optString("t", "")
+            out[s.toIntOrNull() ?: continue] = inner
+        }
+        return out
+    }
 
     private fun JSONArray.objs(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 

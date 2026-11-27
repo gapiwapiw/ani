@@ -52,7 +52,7 @@ private fun SubRow(label: String, size: String, initial: Boolean) {
 }
 
 @Composable
-fun DownloadSheet(visible: Boolean, ep: Int, onClose: () -> Unit, onStart: () -> Unit) {
+fun DownloadSheet(visible: Boolean, ep: String, onClose: () -> Unit, onStart: () -> Unit) {
     AnimatedVisibility(visible, enter = fadeIn(motion(Motion.D2)), exit = fadeOut(motion(Motion.D2))) {
         Box(Modifier.fillMaxSize().background(Color(0x8C000000)).plainClick(onClose)) {
             Column(

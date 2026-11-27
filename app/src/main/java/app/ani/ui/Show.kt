@@ -21,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,40 +35,66 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import app.ani.data.FakeEpisodes
-import app.ani.data.Show
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.layout.ContentScale
+import app.ani.Graph
+import app.ani.data.EpisodeRef
+import app.ani.data.SeasonRef
+import app.ani.data.ShowGroup
+import app.ani.data.ShowMeta
+import app.ani.data.toShow
+import coil3.compose.AsyncImage
 
 @Composable
 fun ShowScreen(
-    s: Show,
+    g: ShowGroup,
+    mode: String,
+    onMode: (String) -> Unit,
     onBack: () -> Unit,
-    onWatch: () -> Unit,
-    onDownload: (Int) -> Unit,
+    onWatch: (SeasonRef, String) -> Unit,
+    onDownload: (SeasonRef, String) -> Unit,
     toast: (String) -> Unit,
 ) {
+    val st = Graph.store
     val scroll = rememberScrollState()
     val thr = with(LocalDensity.current) { 180.dp.toPx() }
     val solid = scroll.value > thr
-    var liked by remember(s) { mutableStateOf(false) }
-    var expanded by remember(s) { mutableStateOf(false) }
-    var season by remember(s) { mutableIntStateOf(0) }
-    var dub by remember(s) { mutableIntStateOf(0) }
-    val st = remember(s) {
-        mutableStateMapOf(2 to (DlState.Done to 100), 7 to (DlState.Run to 62))
+    val meta by produceState<ShowMeta?>(null, g.key) { value = Graph.repo.info(g.name) }
+    val s = g.toShow(meta)
+    val liked = g.key in st.list
+    val later = g.key in st.later
+    var expanded by remember(g.key) { mutableStateOf(false) }
+    val latest = st.latestFor(g)
+    var si by remember(g.key) {
+        mutableIntStateOf(g.seasons.indexOfFirst { it.id == latest?.sid }.coerceAtLeast(0))
     }
+    val season = g.seasons[si.coerceIn(0, g.seasons.lastIndex)]
+    val eps by produceState<Result<List<EpisodeRef>>?>(null, season.id, mode) {
+        value = null
+        value = runCatching { Graph.repo.episodes(season.id, mode) }
+    }
+    var limit by remember(season.id, mode) { mutableIntStateOf(20) }
     val tbBg by animateColorAsState(if (solid) C.Bg else Color.Transparent, motion(Motion.D2), label = "tb")
     val titleAlpha by animateFloatAsState(if (solid) 1f else 0f, motion(Motion.D2), label = "tbt")
+
+    val list = eps?.getOrNull().orEmpty()
+    val resumeSeason = g.seasons.firstOrNull { it.id == latest?.sid } ?: season
+    val resumeEp = latest?.ep ?: list.firstOrNull()?.number
+    val watchLabel = if (latest != null) "Continue episode ${latest.ep}" else "Watch" + (resumeEp?.let { " episode $it" } ?: "")
 
     Box(Modifier.fillMaxSize().background(C.Bg)) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
             // Hero: the only decorative gradient is this fade into the background.
             Box(Modifier.fillMaxWidth().height(300.dp).background(s.bg())) {
-                if (s.none) {
-                    AIcon(AniIcons.Film, C.Mut, 48.dp, Modifier.align(Alignment.Center))
-                } else {
-                    AText(
-                        s.title.take(1), Modifier.align(Alignment.Center),
-                        size = 96, weight = 500, color = Color.hsl(s.hue, 0.14f, 0.30f), lh = 1f,
+                AText(
+                    s.title.take(1), Modifier.align(Alignment.Center),
+                    size = 96, weight = 500, color = Color.hsl(s.hue, 0.14f, 0.30f), lh = 1f,
+                )
+                if (s.thumb.isNotBlank()) {
+                    AsyncImage(
+                        model = s.thumb, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
                     )
                 }
                 Box(
@@ -84,9 +109,9 @@ fun ShowScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AText("${s.year}", color = C.Mut)
-                        AText("${s.eps} episodes", color = C.Mut)
-                        Box(Modifier.hairBorder(Shp.R1).padding(horizontal = 6.dp)) { AText(s.rating, size = 12) }
+                        if (s.year.isNotBlank()) AText(s.year, color = C.Mut)
+                        if (list.isNotEmpty()) AText("${list.size} episodes", color = C.Mut)
+                        if (s.rating.isNotBlank()) Box(Modifier.hairBorder(Shp.R1).padding(horizontal = 6.dp)) { AText(s.rating, size = 12) }
                     }
                 }
             }
@@ -95,20 +120,34 @@ fun ShowScreen(
                     Modifier.padding(vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Btn("Continue episode 6", onWatch, Modifier.weight(1f), icon = AniIcons.PlayFilled)
-                    IconBtn(AniIcons.Plus, "Watch later", { toast("Saved to watch later") }, sq = true)
-                    IconBtn(AniIcons.Download, "Download", { onDownload(6) }, sq = true)
-                }
-                AText(
-                    s.desc, maxLines = if (expanded) Int.MAX_VALUE else 3,
-                    color = C.Tx.copy(alpha = 0.78f), lh = 1.55f,
-                )
-                if (s.desc.length > 140) {
-                    AText(
-                        if (expanded) "Less" else "More",
-                        Modifier.padding(top = 4.dp).tap { expanded = !expanded },
-                        size = 12, color = C.Ac2,
+                    Btn(
+                        watchLabel,
+                        { if (resumeEp != null) onWatch(resumeSeason, resumeEp) },
+                        Modifier.weight(1f), icon = AniIcons.PlayFilled,
                     )
+                    IconBtn(
+                        AniIcons.Plus, "Watch later",
+                        { st.remember(g); st.toggleLater(g.key); toast(if (!later) "Saved to watch later" else "Removed from watch later") },
+                        tint = if (later) C.Ac2 else C.Tx, sq = true,
+                    )
+                    IconBtn(
+                        AniIcons.Download, "Download",
+                        { if (resumeEp != null) onDownload(resumeSeason, resumeEp) },
+                        sq = true,
+                    )
+                }
+                if (s.desc.isNotBlank()) {
+                    AText(
+                        s.desc, maxLines = if (expanded) Int.MAX_VALUE else 3,
+                        color = C.Tx.copy(alpha = 0.78f), lh = 1.55f,
+                    )
+                    if (s.desc.length > 140) {
+                        AText(
+                            if (expanded) "Less" else "More",
+                            Modifier.padding(top = 4.dp).tap { expanded = !expanded },
+                            size = 12, color = C.Ac2,
+                        )
+                    }
                 }
                 Row(
                     Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp),
@@ -116,22 +155,38 @@ fun ShowScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AText("Episodes", size = 18, weight = 600)
-                    Seg(listOf("Sub", "Dub"), dub, { dub = it })
+                    Seg(listOf("Sub", "Dub"), if (mode == "dub") 1 else 0, { onMode(if (it == 1) "dub" else "sub") })
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    listOf("Season 1", "Season 2", "Movies").forEachIndexed { i, name ->
-                        val on = i == season
-                        Column(Modifier.width(IntrinsicSize.Max).tap { season = i }) {
-                            AText(name, Modifier.padding(vertical = 8.dp), weight = 500, color = if (on) C.Tx else C.Mut)
-                            Box(Modifier.fillMaxWidth().height(2.dp).background(if (on) C.Tx else Color.Transparent))
+                if (g.seasons.size > 1) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    ) {
+                        g.seasons.forEachIndexed { i, sr ->
+                            val on = i == si
+                            Column(Modifier.width(IntrinsicSize.Max).tap { si = i }) {
+                                AText(sr.label, Modifier.padding(vertical = 8.dp), weight = 500, color = if (on) C.Tx else C.Mut, maxLines = 1)
+                                Box(Modifier.fillMaxWidth().height(2.dp).background(if (on) C.Tx else Color.Transparent))
+                            }
                         }
                     }
+                    Hair(Modifier.padding(bottom = 8.dp))
                 }
-                Hair(Modifier.padding(bottom = 8.dp))
-                FakeEpisodes.forEachIndexed { k, title ->
-                    val n = k + 1
-                    val watched = n < 6
-                    val cur = st[n] ?: (DlState.Idle to 0)
+                val res = eps
+                when {
+                    res == null -> AText("Loading episodes…", Modifier.padding(vertical = 16.dp), color = C.Mut)
+                    res.isFailure -> Empty("Couldn’t load episodes", res.exceptionOrNull()?.message ?: "Try again later.")
+                    list.isEmpty() -> Empty("No episodes", "Nothing is available for ${if (mode == "dub") "dub" else "sub"} yet.")
+                }
+                val h = st.hist[season.id]
+                val titles = if (season.kind == "season") meta?.epTitles?.get(season.num) else null
+                list.take(limit).forEach { e ->
+                    val n = e.number
+                    val w = h?.w?.get(n)
+                    val frac = if (w != null && w.second > 0) (w.first / w.second).toFloat() else 0f
+                    val watched = frac > 0.92f
+                    val cur = h?.ep == n && !watched
+                    val title = titles?.get(n)?.takeIf { it.isNotBlank() } ?: "Episode $n"
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -141,37 +196,33 @@ fun ShowScreen(
                             Modifier.weight(0.44f).aspectRatio(16f / 9f)
                                 .alpha(if (watched) 0.5f else 1f)
                                 .clip(RoundedCornerShape(8.dp)).background(s.bg())
-                                .tap(onClick = onWatch),
+                                .tap { onWatch(season, n) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            AText("$n", size = 18, weight = 500, color = Color.hsl(s.hue, 0.14f, 0.42f))
-                            if (n == 6) {
+                            AText(n, size = 18, weight = 500, color = Color.hsl(s.hue, 0.14f, 0.42f))
+                            if (frac > 0.01f && !watched) {
                                 Box(
-                                    Modifier.align(Alignment.BottomStart).fillMaxWidth(0.58f)
+                                    Modifier.align(Alignment.BottomStart).fillMaxWidth(frac.coerceIn(0f, 1f))
                                         .height(2.dp).background(C.Ac2),
                                 )
                             }
                         }
-                        Column(Modifier.weight(0.56f).tap(onClick = onWatch)) {
-                            AText("Episode $n, 24 min", size = 12, color = C.Mut)
+                        Column(Modifier.weight(0.56f).tap { onWatch(season, n) }) {
+                            AText("Episode $n", size = 12, color = C.Mut)
                             AText(
                                 title, Modifier.padding(top = 2.dp), weight = 500, maxLines = 2, lh = 1.3f,
                                 color = when {
-                                    n == 6 -> C.Ac2
+                                    cur -> C.Ac2
                                     watched -> C.Tx.copy(alpha = 0.5f)
                                     else -> C.Tx
                                 },
                             )
                         }
-                        Ring(cur.first, cur.second) {
-                            when (cur.first) {
-                                DlState.Run -> st[n] = DlState.Paused to cur.second
-                                DlState.Paused -> st[n] = DlState.Run to cur.second
-                                DlState.Idle -> onDownload(n)
-                                DlState.Done -> {}
-                            }
-                        }
+                        Ring(DlState.Idle, 0) { onDownload(season, n) }
                     }
+                }
+                if (list.size > limit) {
+                    Btn("Show more", { limit += 30 }, Modifier.fillMaxWidth().padding(top = 8.dp), ghost = true)
                 }
             }
             Box(Modifier.height(32.dp))
@@ -191,7 +242,7 @@ fun ShowScreen(
             AText(s.title, Modifier.weight(1f).alpha(titleAlpha), size = 16, weight = 500, maxLines = 1)
             IconBtn(
                 if (liked) AniIcons.HeartFilled else AniIcons.Heart, "Add to my list",
-                { liked = !liked; toast(if (liked) "Added to my list" else "Removed from my list") },
+                { st.remember(g); st.toggleList(g.key); toast(if (!liked) "Added to my list" else "Removed from my list") },
                 tint = if (liked) C.Ac2 else C.Tx, bg = chip,
             )
         }

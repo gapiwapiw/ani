@@ -42,7 +42,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import app.ani.data.FakeShows
+import android.net.ConnectivityManager
+import android.net.Network
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import app.ani.Graph
+import app.ani.data.SeasonRef
+import app.ani.data.ShowGroup
+import app.ani.data.toShow
 import kotlinx.coroutines.delay
 
 private val NAV: List<Pair<String, ImageVector>> = listOf(
@@ -71,7 +78,7 @@ private fun Header(tab: Int, q: String, onQ: (String) -> Unit, dub: Int, onDub: 
 }
 
 @Composable
-private fun BottomNav(tab: Int, onTab: (Int) -> Unit) {
+private fun BottomNav(tab: Int, dlBadge: Int, onTab: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(C.Bg)
             .drawBehind { drawRect(C.Ln, Offset.Zero, Size(size.width, 1.dp.toPx())) }
@@ -91,13 +98,13 @@ private fun BottomNav(tab: Int, onTab: (Int) -> Unit) {
             ) {
                 Box {
                     AIcon(icon, col, 22.dp)
-                    if (i == 2) {
+                    if (i == 2 && dlBadge > 0) {
                         Box(
                             Modifier.align(Alignment.TopEnd).offset(x = 12.dp, y = (-4).dp)
                                 .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
                                 .clip(RoundedCornerShape(8.dp)).background(C.S3).padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center,
-                        ) { AText("1", size = 12, lh = 1.3f) }
+                        ) { AText("$dlBadge", size = 12, lh = 1.3f) }
                     }
                 }
                 AText(label, size = 12, color = col)
@@ -106,16 +113,33 @@ private fun BottomNav(tab: Int, onTab: (Int) -> Unit) {
     }
 }
 
+private class PlayTarget(val g: ShowGroup, val season: SeasonRef, val ep: String)
+
+@Composable
+private fun rememberOnline(): Boolean {
+    val ctx = LocalContext.current
+    var online by remember { mutableStateOf(true) }
+    DisposableEffect(Unit) {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { online = true }
+            override fun onLost(network: Network) { online = false }
+        }
+        try { cm.registerDefaultNetworkCallback(cb) } catch (e: Exception) { }
+        onDispose { try { cm.unregisterNetworkCallback(cb) } catch (e: Exception) { } }
+    }
+    return online
+}
+
 @Composable
 fun AniApp() {
+    val st = Graph.store
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var q by rememberSaveable { mutableStateOf("") }
-    var dub by rememberSaveable { mutableIntStateOf(0) }
-    var openShow by rememberSaveable { mutableIntStateOf(-1) }
-    var lastShow by rememberSaveable { mutableIntStateOf(0) }
-    var player by rememberSaveable { mutableStateOf(false) }
-    var sheetEp by rememberSaveable { mutableIntStateOf(-1) }
-    var subSize by rememberSaveable { mutableIntStateOf(20) }
+    var openKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var target by remember { mutableStateOf<PlayTarget?>(null) }
+    val online = rememberOnline()
+    val mode = st.prefs.mode
 
     var toastMsg by remember { mutableStateOf("") }
     var toastOn by remember { mutableStateOf(false) }
@@ -129,53 +153,60 @@ fun AniApp() {
         }
     }
 
-    // Back closes the sheet, then the player, then the show page, then exits.
-    BackHandler(enabled = sheetEp >= 0 || player || openShow >= 0) {
-        when {
-            sheetEp >= 0 -> sheetEp = -1
-            player -> player = false
-            else -> openShow = -1
-        }
+    // Back closes the player, then the show page, then exits.
+    BackHandler(enabled = target != null || openKey != null) {
+        if (target != null) target = null else openKey = null
     }
+
+    val shownGroup = openKey?.let { st.group(it) }
+    val open = { g: ShowGroup -> st.touchRecent(g); openKey = g.key }
 
     Box(Modifier.fillMaxSize().background(C.Bg)) {
         Column(Modifier.fillMaxSize().imePadding()) {
-            Header(tab, q, { q = it }, dub) { dub = it }
+            Header(tab, q, { q = it }, if (mode == "dub") 1 else 0) { st.setPrefs(st.prefs.copy(mode = if (it == 1) "dub" else "sub")) }
+            if (!online) {
+                Box(Modifier.fillMaxWidth().background(C.S2).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    AText("You are offline. Downloaded episodes still play.", size = 12, color = C.Mut)
+                }
+            }
             Box(Modifier.weight(1f)) {
                 Crossfade(tab, animationSpec = motion(Motion.D3), label = "tab") { t ->
-                    val open = { i: Int -> lastShow = i; openShow = i }
                     when (t) {
                         0 -> HomeScreen(open)
-                        1 -> SearchScreen(q, { q = it }, open)
+                        1 -> SearchScreen(q, mode, { q = it }, open)
                         2 -> DownloadsScreen()
-                        else -> SettingsScreen(subSize) { subSize = it; toast("Subtitle size $it") }
+                        else -> SettingsScreen(toast)
                     }
                 }
             }
-            BottomNav(tab) { tab = it }
+            BottomNav(tab, 0) { tab = it }
         }
 
         AnimatedVisibility(
-            openShow >= 0,
+            shownGroup != null,
             enter = slideInHorizontally(motion(Motion.D3)) { it },
             exit = slideOutHorizontally(motion(Motion.D3)) { it },
         ) {
-            ShowScreen(
-                s = FakeShows[lastShow],
-                onBack = { openShow = -1 },
-                onWatch = { player = true },
-                onDownload = { sheetEp = it },
-                toast = toast,
-            )
+            // Keep the last group while the exit animation runs.
+            val g = remember(shownGroup) { shownGroup }
+            if (g != null) {
+                ShowScreen(
+                    g = g,
+                    mode = mode,
+                    onMode = { st.setPrefs(st.prefs.copy(mode = it)) },
+                    onBack = { openKey = null },
+                    onWatch = { s, ep -> target = PlayTarget(g, s, ep) },
+                    onDownload = { _, _ -> toast("Downloads are not available in this build yet") },
+                    toast = toast,
+                )
+            }
         }
 
-        DownloadSheet(sheetEp >= 0, if (sheetEp >= 0) sheetEp else 6, { sheetEp = -1 }) {
-            sheetEp = -1
-            toast("Download started")
-        }
-
-        AnimatedVisibility(player, enter = fadeIn(motion(Motion.D2)), exit = fadeOut(motion(Motion.D2))) {
-            PlayerScreen(FakeShows[lastShow], subSize) { player = false }
+        AnimatedVisibility(target != null, enter = fadeIn(motion(Motion.D2)), exit = fadeOut(motion(Motion.D2))) {
+            val tg = remember(target) { target }
+            if (tg != null) {
+                PlayerScreen(tg.g.toShow(), st.prefs.subSize) { target = null }
+            }
         }
 
         AnimatedVisibility(

@@ -41,18 +41,18 @@ Dispatch/poll with the token via the Actions API (`POST /actions/workflows/<file
 - [x] Repo + workflow + Gradle project skeleton compiles in CI (run green, APK artifact `app-debug`)
 - [x] Theme + static screens (fake data): Home, Search, Downloads, Settings, Show page, download sheet, Player UI (simulated timer), launcher icon. CI green.
 - [x] resolver.js (search/episodes/sources/info/findSubs/toVtt + season grouping) and QuickJS runtime `data/Resolver.kt` compile in CI. NOT run on a device. quickjs-kt package is `com.dokar.quickjs` (group id is io.github.dokar3). Bundled copy: Gradle task copyResolver copies root resolver.js into assets.
-- [ ] Player
-- [ ] Downloads + offline
-- [ ] History, list, watch later, settings
+- [x] Repository + persistence: `data/Repo.kt` (episode/info cache), `data/Store.kt` (state.json in filesDir: history, my list, watch later, recent searches/titles, prefs, download headers). Screens use real data (Fake.kt removed). Posters via Coil with resolver-declared `imageHeaders`.
+- [x] Player: Media3 ExoPlayer HLS, Referer/UA headers, resume from history, auto-next, quality (max height), speed, own subtitle renderer (`data/Subs.kt`, VTT/SRT), extra subtitles via resolver findSubs. Compiles in CI. NOT run on a device.
+- [x] Downloads: Media3 DownloadManager + foreground service (`AniDownloadService`, max 2 parallel), subtitle files saved next to the episode, offline playback through the shared cache (`Downloads.localLoaded`). Compiles in CI. NOT run on a device.
+- [x] History, list, watch later, settings (subtitle language/size, speed, download quality, resolver status + refresh).
 - [ ] README (build, push, update resolver)
+- [ ] On-device verification of everything above (nothing has been run on a phone)
 
 ## Next steps
-1. resolver.js (repo root) + runtime. Use `io.github.dokar3:quickjs-kt:1.0.18` (published, versions workflow confirms; check its README for the define/function/async API before coding). The old app.cash.quickjs is unmaintained. Port `hianime_*` from reference/ani-lite.zip `ani/lib.sh`, `getSources` from `server.js`, plus `subs.js` and `group.js` (season grouping). Contract in pleasereadthisifyouareclaude.md. Loading order: remote RESOLVER_URL, cached copy in filesDir, bundled asset. Settings shows source/version/refresh.
-2. Replace FakeShows/FakeEpisodes (app/src/main/java/app/ani/data/Fake.kt) with repository + resolver data; add OkHttp, Coil (posters), DataStore (history, my list, watch later, settings), serialization to app/build.gradle.kts. Behavior spec: ani/public/app.js in the zip.
-3. Real player: Media3 ExoPlayer + HLS + OkHttp data source with referer/headers, resume position, quality/subtitle/speed menus. UI is already in ui/Player.kt (timer is simulated); keep the controls, replace the black box with PlayerView/AndroidView (surface only, controls stay Compose).
-4. Downloads: DownloadService (dataSync), max 2 concurrent, subtitles alongside, offline playback.
-5. Settings pickers are tap-to-cycle placeholders; make them real and persisted. Add offline banner, storage summary, resolver status.
-6. README (build, push, update resolver).
+1. Install the CI APK on a phone and test in this order: search -> show page -> play -> download -> airplane-mode playback. Fix resolver.js first if search/sources fail (all site logic is there).
+2. Known gaps: no notification-permission prompt (Android 13+: downloads run but the notification may be hidden), downloaded episodes are not marked in the episode list beyond the ring, no storage-location setting, no Cinemeta episode thumbnails yet (resolver returns them in `info().eps[s][e].th`).
+3. Write README.md (build, push, how to change resolver.js and set RESOLVER_URL).
+4. Optional: make the repo public or add a read-only token, then set RESOLVER_URL so resolver fixes ship without a new APK.
 
 ## UI map (app/src/main/java/app/ani/ui)
 Theme.kt (colors C, shapes Shp, Motion, reduced-motion), Icons.kt (ImageVectors + AniLogo), Components.kt (AText, tap, Poster, ShowCard, Seg, Btn, IconBtn, Ring, AniSlider...), AniApp.kt (tabs, nav, back order sheet then player then show), Home/Search/Downloads/Settings/Show/Sheets/Player.kt.
@@ -67,3 +67,4 @@ Not Material: only foundation/ui/animation. Edge-to-edge is on (targetSdk 37), s
 - 2026-11-27: repo scaffolding; versions looked up; Gradle skeleton + build.yml; CI green after the compileSdk 37.1 fix.
 - 2026-11-27 (session 3): resolver.js + Resolver.kt + build wiring, CI green (fixes: assets srcDir must be a File on AGP 9, quickjs package name).
 - 2026-11-27 (later): theme, icons, components, all static screens, launcher icon; CI green on second try (two import fixes). Not run on a device. Logo uses the prototype's calm colors, not logo.svg's old red.
+- 2026-11-27 (session 3, cont.): repo/store, real screens, Media3 player, download manager and service, settings. CI green after fixes (Store.setPrefs JVM clash, DownloadHelper.Callback.onPrepared(helper, Boolean) in the Media3 version pinned here).
